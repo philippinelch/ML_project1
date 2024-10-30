@@ -217,6 +217,72 @@ def verify_one_hot_encoding(data, binary_columns_indices):
         return False
     
 
+def split_and_balance_data(x, y, test_size=0.2, balance_method="oversample"):
+    """
+    Splits the data into training and test sets, then balances the training set if specified.
+
+    Args:
+        x (np.array): Features data.
+        y (np.array): Target labels.
+        test_size (float): Proportion of the dataset to include in the test split.
+        balance_method (str): Method to balance the training set ("undersample" or "oversample").
+
+    Returns:
+        tuple: Balanced x_train, y_train, along with imbalanced x_test, y_test.
+    """
+    # Stratified Split
+    class_0_indices = np.where(y == -1)[0]
+    class_1_indices = np.where(y == 1)[0]
+
+    # Check if both classes are present
+    if len(class_0_indices) == 0 or len(class_1_indices) == 0:
+        raise ValueError("y does not contain both classes. Ensure y has both classes for balancing.")
+
+    np.random.shuffle(class_0_indices)
+    np.random.shuffle(class_1_indices)
+
+    n_test_class_0 = int(len(class_0_indices) * test_size)
+    n_test_class_1 = int(len(class_1_indices) * test_size)
+
+    test_indices = np.concatenate([class_0_indices[:n_test_class_0], class_1_indices[:n_test_class_1]])
+    train_indices = np.concatenate([class_0_indices[n_test_class_0:], class_1_indices[n_test_class_1:]])
+
+    x_train, x_test = x[train_indices], x[test_indices]
+    y_train, y_test = y[train_indices], y[test_indices]
+
+    # Balance the Training Set
+    if balance_method == "undersample":
+        majority_class = -1 if len(np.where(y_train == -1)[0]) > len(np.where(y_train == 1)[0]) else 1
+        minority_class_indices = np.where(y_train != majority_class)[0]
+        majority_class_indices = np.where(y_train == majority_class)[0]
+        
+        # Only proceed if both classes are present in y_train
+        if len(minority_class_indices) == 0 or len(majority_class_indices) == 0:
+            raise ValueError("The training data after split does not contain both classes.")
+
+        np.random.shuffle(majority_class_indices)
+        majority_class_indices = majority_class_indices[:len(minority_class_indices)]
+        balanced_indices = np.concatenate([minority_class_indices, majority_class_indices])
+        np.random.shuffle(balanced_indices)
+        x_train, y_train = x_train[balanced_indices], y_train[balanced_indices]
+        
+    elif balance_method == "oversample":
+        majority_class = -1 if len(np.where(y_train == -1)[0]) > len(np.where(y_train == 1)[0]) else 1
+        minority_class_indices = np.where(y_train != majority_class)[0]
+        majority_class_indices = np.where(y_train == majority_class)[0]
+        
+        # Only proceed if both classes are present in y_train
+        if len(minority_class_indices) == 0 or len(majority_class_indices) == 0:
+            raise ValueError("The training data after split does not contain both classes.")
+        
+        oversampled_indices = np.random.choice(minority_class_indices, size=len(majority_class_indices), replace=True)
+        balanced_indices = np.concatenate([majority_class_indices, oversampled_indices])
+        np.random.shuffle(balanced_indices)
+        x_train, y_train = x_train[balanced_indices], y_train[balanced_indices]
+
+    return x_train, x_test, y_train, y_test
+    
+
 def mean_imputation(data, binary_columns):
     """
     Imputes missing values in the dataset by replacing them with the mean of each column.
@@ -390,15 +456,19 @@ def statistical_test_analysis(headers, x_data, y_data, p_value_threshold=0.05):
 
 
 
-def Preprocess_data(file_path, x_train, x_test, y_train, low_corr_threshold=0.05, high_corr_threshold=0.9, variance_threshold=0.01, p_value_threshold=0.05, missing_val_threshold=0.25):
+def Preprocess_data(file_path, x_train, y_train, test_size=0.2, balance_method="oversample", low_corr_threshold=0.05, high_corr_threshold=0.9, variance_threshold=0.01, p_value_threshold=0.05, missing_val_threshold=0.25):
     """
     Preprocesses the dataset by sequentially applying all preprocessing steps: missing values removal, 
-    one-hot encoding, mean imputation, variance thresholding, correlation analysis, and statistical test analysis.
+    one-hot encoding, data splitting, data balancing, mean imputation, variance thresholding, 
+    correlation analysis, and statistical test analysis.
 
     Args:
         file_path (str): Path to the dataset folder.
-        categorical_columns (list): List of indices of categorical features for one-hot encoding.
-        binary_features (list): List of indices of known binary features.
+        x_train (np.array): Initial training feature data.
+        x_test (np.array): Initial test feature data.
+        y_train (np.array): Training labels.
+        test_size (float): Proportion of the dataset to include in the test split.
+        balance_method (str): Method to balance the training set ("undersample" or "oversample").
         low_corr_threshold (float): Minimum Pearson correlation threshold for correlation analysis.
         high_corr_threshold (float): Maximum Pearson correlation threshold for correlation analysis.
         variance_threshold (float): Minimum variance threshold to retain features.
@@ -406,14 +476,13 @@ def Preprocess_data(file_path, x_train, x_test, y_train, low_corr_threshold=0.05
         missing_val_threshold (float): Maximum allowed percentage of missing values.
 
     Returns:
-        np.array: Preprocessed x_train, x_test, and y_train datasets.
+        tuple: Preprocessed x_train, x_test, and y_train datasets, as well as final headers.
     """
     x_train_headers = extract_headers(file_path + "x_train.csv")
 
     # Step 1: Remove features with too many missing values
     valid_columns, x_train = remove_missing_values(x_train_headers, x_train, missing_val_threshold)
     x_train_headers = [x_train_headers[i] for i in valid_columns]
-    x_test = x_test[:, valid_columns]
 
     # Step 2: Identify Feature Types
     feature_lists, feature_counts = identify_feature_types(x_train, x_train_headers)
@@ -423,31 +492,33 @@ def Preprocess_data(file_path, x_train, x_test, y_train, low_corr_threshold=0.05
     # Step 3: One-Hot Encoding for categorical features
     categorical_columns_filtered = [i for i, header in enumerate(x_train_headers) if header in categorical_features]
     x_train_encoded, x_train_encoded_headers = one_hot_encode(x_train, x_train_headers, categorical_columns_filtered)
-    x_test_encoded, _ = one_hot_encode(x_test, x_train_headers, categorical_columns_filtered)
 
-    # Step 4: Verify One-Hot Encoding
+    # Step 4: Split and Balance the Data
+    x_train_balanced, x_train_test, y_train_balanced, y_test = split_and_balance_data(x_train_encoded, y_train, test_size, balance_method)
+
+    # Step 5: Verify One-Hot Encoding
     binary_columns = [i for i, header in enumerate(x_train_encoded_headers) if "_encoded" in header or header in binary_features]
-    verify_one_hot_encoding(x_train_encoded, binary_columns)
+    verify_one_hot_encoding(x_train_balanced, binary_columns)
 
-    # Step 5: Mean Imputation for Missing Values
-    x_train_imputed = mean_imputation(x_train_encoded, binary_columns)
-    x_test_imputed = mean_imputation(x_test_encoded, binary_columns)
+    # Step 6: Mean Imputation for Missing Values
+    x_train_imputed = mean_imputation(x_train_balanced, binary_columns)
+    x_test_imputed = mean_imputation(x_train_test, binary_columns)
 
-    # Step 6: Variance Thresholding
+    # Step 7: Variance Thresholding
     valid_columns, x_train_variance_filtered = variance_thresholding(x_train_encoded_headers, x_train_imputed, variance_threshold)
     x_train_variance_filtered_headers = [x_train_encoded_headers[i] for i in valid_columns]
     x_test_variance_filtered = x_test_imputed[:, valid_columns]
 
-    # Step 7: Correlation Analysis
+    # Step 8: Correlation Analysis
     correlation_valid_columns, x_train_correlation_filtered = correlation_analysis(
-        x_train_variance_filtered_headers, x_train_variance_filtered, y_train, low_corr_threshold, high_corr_threshold
+        x_train_variance_filtered_headers, x_train_variance_filtered, y_train_balanced, low_corr_threshold, high_corr_threshold
     )
     x_train_correlation_filtered_headers = [x_train_variance_filtered_headers[i] for i in correlation_valid_columns]
     x_test_correlation_filtered = x_test_variance_filtered[:, correlation_valid_columns]
 
-    # Step 8: Statistical Test Analysis
+    # Step 9: Statistical Test Analysis
     statistical_valid_columns, x_train_statistical_filtered = statistical_test_analysis(
-        x_train_variance_filtered_headers, x_train_variance_filtered, y_train, p_value_threshold
+        x_train_variance_filtered_headers, x_train_variance_filtered, y_train_balanced, p_value_threshold
     )
     x_train_statistical_filtered_headers = [x_train_variance_filtered_headers[i] for i in statistical_valid_columns]
     x_test_statistical_filtered = x_test_variance_filtered[:, statistical_valid_columns]
@@ -458,4 +529,4 @@ def Preprocess_data(file_path, x_train, x_test, y_train, low_corr_threshold=0.05
     x_train_final_headers = [x_train_variance_filtered_headers[i] for i in combined_valid_columns]
     x_test_final = x_test_variance_filtered[:, combined_valid_columns]
     
-    return x_train_final_headers, x_train_final, x_test_final, y_train
+    return x_train_final_headers, x_train_final, x_test_final, y_train_balanced, y_test

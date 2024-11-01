@@ -59,7 +59,7 @@ def mean_squares_error_gd(y, tx, initial_w, max_iters, gamma):
     w = initial_w
     prev_loss=0
     for n_iter in range(max_iters):
-
+        
         #compute gradient and loss
         gradient = compute_gradient(y, tx, w)
         loss = compute_loss(y, tx, w)  
@@ -90,9 +90,10 @@ def mean_squared_error_sgd(y, tx, initial_w, max_iters, gamma):
     np.random.seed(seed)
    
     # Initialize weights and track previous loss
-    w = initial_w.reshape(-1, 1)  # Ensure w is (D, 1)
+    w = initial_w # Ensure w is (D, 1)
     temp_loss = float('inf')  # Start with an infinitely high loss for comparison
-    tolerance=1e-4
+    tolerance=1e-6
+    decay_rate=1e-2
 
     for iter_ in range(max_iters):
         # Shuffle the data at the beginning of each iteration for better SGD performance
@@ -103,11 +104,16 @@ def mean_squared_error_sgd(y, tx, initial_w, max_iters, gamma):
         # Update weights for each data point in the shuffled dataset
         for i in range(len(y)):
             e = y_shuffled[i] - np.dot(tx_shuffled[i, :], w)
-            gradient = -tx_shuffled[i, :].reshape(-1, 1) * e  # Reshape to ensure correct dimensions
+            gradient = -tx_shuffled[i, :] * e  # Reshape to ensure correct dimensions
             w = w - gamma * gradient  # Update the weights
 
         # Compute the loss after one full pass (epoch) through the dataset
+        #gamma = gamma / (1 + iter_ * decay_rate)
         loss = compute_loss(y, tx, w)
+        
+        if np.isnan(loss):
+            print("NaN encountered in loss, stopping training.")
+            break
         
         # Check for convergence based on the change in loss
         if abs(temp_loss - loss) < tolerance:
@@ -229,8 +235,8 @@ def reg_logistic_regression(y, tx, lambda_, initial_w, max_iters, gamma):
         
         w = w - gamma * grad
         # log info
-        #if iter % 100 == 0:
-        #    print("Current iteration={i}, loss={l}".format(i=iter, l=loss))
+        if iter % 100 == 0:
+            print("Current iteration={i}, loss={l}".format(i=iter, l=loss))
         # converge criterion
         losses.append(loss)
         weights.append(w)
@@ -244,4 +250,19 @@ def reg_logistic_regression(y, tx, lambda_, initial_w, max_iters, gamma):
     print(iter_)
     return w, loss
 
+def f1_score (y_true, y_pred) : 
+    y_pred_bin = (y_pred >= 0.5).astype(int)
+    
+    # Calcul des True Positives, False Positives et False Negatives
+    TP = np.sum((y_true == 1) & (y_pred_bin == 1))
+    FP = np.sum((y_true == 0) & (y_pred_bin == 1))
+    FN = np.sum((y_true == 1) & (y_pred_bin == 0))
+    
+    # Calcul de la précision et du rappel
+    precision = TP / (TP + FP) if (TP + FP) > 0 else 0
+    recall = TP / (TP + FN) if (TP + FN) > 0 else 0
 
+    # Calcul du F1 score
+    if precision + recall == 0:
+        return 0
+    return 2 * (precision * recall) / (precision + recall)

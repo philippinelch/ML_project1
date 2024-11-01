@@ -153,8 +153,7 @@ def replace_binary_values(data, binary_columns_indices):
     return data
 
 
-
-#def split_and_balance_data(x_train, y_train):
+def split_and_balance_data(x_train, y_train):
     """
     Balances x_train and y_train to have an equal number of -1 and 1 labels.
     
@@ -165,7 +164,6 @@ def replace_binary_values(data, binary_columns_indices):
     Returns:
         x_train_balanced: numpy array of balanced samples.
         y_train_balanced: numpy array of balanced labels.
-    """
     """
     # Find indices for each class
     indices_class_1 = np.where(y_train == 1)[0]
@@ -200,74 +198,6 @@ def replace_binary_values(data, binary_columns_indices):
     # Créer les ensembles d'entraînement et de validation
     x_train, y_train = x_train_balanced[train_indices], y_train_balanced[train_indices]
     x_val, y_val = x_train_balanced[val_indices], y_train_balanced[val_indices]
-    
-    return x_train, x_val, y_train, y_val
-    """
-
-def balance_data(x_train, y_train):
-    """
-    Balances x_train and y_train to have an equal number of -1 and 1 labels.
-    
-    Args:
-        x_train: numpy array of samples.
-        y_train: numpy array of labels.
-        
-    Returns:
-        x_train_balanced: Balanced numpy array of samples.
-        y_train_balanced: Balanced numpy array of labels.
-    """
-    # Find indices for each class
-    indices_class_1 = np.where(y_train == 1)[0]
-    indices_class_neg_1 = np.where(y_train == -1)[0]
-    
-    # Determine the smaller class size
-    min_class_size = min(len(indices_class_1), len(indices_class_neg_1))
-    
-    # Randomly select indices to balance the classes
-    balanced_indices_class_1 = np.random.choice(indices_class_1, min_class_size, replace=False)
-    balanced_indices_class_neg_1 = np.random.choice(indices_class_neg_1, min_class_size, replace=False)
-    
-    # Combine indices and shuffle
-    balanced_indices = np.concatenate([balanced_indices_class_1, balanced_indices_class_neg_1])
-    np.random.shuffle(balanced_indices)
-    
-    # Filter x_train and y_train based on balanced indices
-    x_train_balanced = x_train[balanced_indices]
-    y_train_balanced = y_train[balanced_indices]
-    
-    return x_train_balanced, y_train_balanced
-
-
-def split_data(x_train_balanced, y_train_balanced, split_ratio=0.8):
-    """
-    Splits balanced data into training and validation sets.
-    
-    Args:
-        x_train_balanced: numpy array of balanced samples.
-        y_train_balanced: numpy array of balanced labels.
-        split_ratio: float, the ratio of data used for training (default is 0.8).
-        
-    Returns:
-        x_train: Training set features.
-        x_val: Validation set features.
-        y_train: Training set labels.
-        y_val: Validation set labels.
-    """
-    # Shuffle indices for splitting
-    indices = np.arange(x_train_balanced.shape[0])
-    np.random.shuffle(indices)
-
-    # Calculate split index based on the split ratio
-    split_index = int(split_ratio * x_train_balanced.shape[0])
-
-    # Split data into training and validation sets
-    train_indices = indices[:split_index]
-    val_indices = indices[split_index:]
-
-    x_train = x_train_balanced[train_indices]
-    y_train = y_train_balanced[train_indices]
-    x_val = x_train_balanced[val_indices]
-    y_val = y_train_balanced[val_indices]
     
     return x_train, x_val, y_train, y_val
 
@@ -544,6 +474,7 @@ def Preprocess_Data(
     x_train = replace_dont_know_refused_all(x_train)
     x_test = replace_dont_know_refused_all(x_test)
     
+    
     '''# Step 2: Remove specified columns
     columns_to_remove = ["IYEAR", "DISPCODE"]
     columns_to_remove_indices = [x_train_headers.index(col) for col in columns_to_remove if col in x_train_headers]
@@ -554,44 +485,35 @@ def Preprocess_Data(
     valid_columns, x_train = remove_missing_values(x_train, missing_val_threshold)
     x_train_headers = [x_train_headers[i] for i in valid_columns]  # Update headers after column removal
 
-    # Keep the same columns as x_train for consistency
-    x_test = x_test[:, valid_columns]
+    # Keep the same column in x_test than in x_train for consistency
+    #x_test = x_test[:, valid_columns]
     
     # Step 4: Identify feature types
     feature_indices, _ = identify_feature_types(x_train)
     binary_columns_indices = feature_indices["binary_indices"]
     continuous_columns_indices = feature_indices["continuous_indices"]
     categorical_columns_indices = feature_indices["categorical_indices"]
-
-    feature_indices_test, _ = identify_feature_types(x_test)
-    binary_columns_indices_test = feature_indices["binary_indices"]
     
     # Step 5: Replace binary values from 1,2 to 0,1
     x_train = replace_binary_values(x_train, binary_columns_indices)
-    x_test = replace_binary_values(x_test, binary_columns_indices_test)
+    x_test = replace_binary_values(x_test, binary_columns_indices)
     
     # Step 6: Split and balance the data
-    # The test set should only be balanced, not split, and the following feature selection step should be applied 
-    # only to the training set, the features selected will be kept in the testing set at the end to ensure consistency
-    #x_train_balanced, x_train_test, y_train_balanced, y_test = split_and_balance_data(
-        #x_train, y_train
-    #)
-
-    x_train_balanced, y_train_balanced = balance_data(x_train, y_train)
-    x_test_balanced, _ = balance_data(x_test, y_train)
-
-    x_train_balanced_split, x_train_test, y_train_balanced_split, y_test = split_data(x_train_balanced, y_train_balanced)
+    x_train_balanced, x_train_test, y_train_balanced, y_test = split_and_balance_data(
+        x_train, y_train
+    )
     
     # Step 7: Standardize continuous features in both train and test sets
-    x_train_balanced_split = standardize_continuous_features(x_train_balanced_split, continuous_columns_indices)
+    x_train_balanced = standardize_continuous_features(x_train_balanced, continuous_columns_indices)
     x_train_test = standardize_continuous_features(x_train_test, continuous_columns_indices)
+    x_test = standardize_continuous_features(x_test, continuous_columns_indices)
     
     # Step 8: One-hot encode categorical features in both train and test sets
-    all_data = np.vstack([x_train_balanced_split, x_train_test])
+    all_data = np.vstack([x_train_balanced, x_train_test])
     categories_per_column = determine_one_hot_categories(all_data, categorical_columns_indices)
 
-    x_train_encoded, binary_train_indices = one_hot_encode_with_categories(x_train_balanced_split, categorical_columns_indices, categories_per_column)
-    x_train_test_encoded, binary_test_indices = one_hot_encode_with_categories(x_train_test, categorical_columns_indices, categories_per_column)
+    x_train_encoded, binary_train_indices = one_hot_encode_with_categories(x_train_balanced, categorical_columns_indices, categories_per_column)
+    x_test_encoded, binary_test_indices = one_hot_encode_with_categories(x_train_test, categorical_columns_indices, categories_per_column)
 
     feature_indices, _ = identify_feature_types(x_train_encoded)
     binary_columns_indices = feature_indices["binary_indices"]
@@ -600,11 +522,11 @@ def Preprocess_Data(
     
     # Step 9: Mean imputation for missing values in both train and test sets
     x_train_imputed = mean_imputation(x_train_encoded, binary_train_indices)
-    x_train_test_imputed = mean_imputation(x_train_test_encoded, binary_test_indices)
+    x_test_imputed = mean_imputation(x_test_encoded, binary_test_indices)
     
     # Step 10: Variance thresholding to remove low-variance features
     valid_columns, x_train_variance_filtered = variance_thresholding(x_train_imputed, variance_threshold)
-    x_test_variance_filtered = x_train_test_imputed[:, valid_columns]
+    x_test_variance_filtered = x_test_imputed[:, valid_columns]
     
     # Step 11: Correlation analysis to retain relevant features
     correlation_valid_columns, x_train_correlation_filtered = correlation_analysis(
@@ -623,7 +545,7 @@ def Preprocess_Data(
     x_train_final = x_train_variance_filtered[:, combined_valid_columns]
     x_test_final = x_test_variance_filtered[:, combined_valid_columns]
 
-    # Step 14: Keep the same columns in x_test to ensure consistency
-    x_test_balanced = x_test_balanced[:, combined_valid_columns]
+    # Keep the same features in x_test than the ones selected in x_train for consistency
+    x_test = x_test[:, combined_valid_columns]
     
     return x_train_final, x_test_final, y_train_balanced, y_test, x_test

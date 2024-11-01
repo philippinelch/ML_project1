@@ -66,6 +66,7 @@ def mean_squares_error_gd(y, tx, initial_w, max_iters, gamma):
         
         #break the loop when convergence is reached
         if abs(prev_loss-loss)<0.0000001: 
+            print(f"Convergence reached at iteration {iter_}s and gamma {gamma}")
             break 
     
         #update w by gradient
@@ -105,7 +106,6 @@ def mean_squared_error_sgd(y, tx, initial_w, max_iters, gamma):
     w = initial_w # Ensure w is (D, 1)
     temp_loss = float('inf')  # Start with an infinitely high loss for comparison
     tolerance=1e-6
-    decay_rate=1e-2
 
     for iter_ in range(max_iters):
         # Shuffle the data at the beginning of each iteration for better SGD performance

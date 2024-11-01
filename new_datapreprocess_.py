@@ -484,9 +484,7 @@ def Preprocess_Data(
     # Step 3: Remove features with too many missing values
     valid_columns, x_train = remove_missing_values(x_train, missing_val_threshold)
     x_train_headers = [x_train_headers[i] for i in valid_columns]  # Update headers after column removal
-
-    # Keep the same column in x_test than in x_train for consistency
-    #x_test = x_test[:, valid_columns]
+    x_test = x_test[:, valid_columns]  # Apply the same columns to x_test
     
     # Step 4: Identify feature types
     feature_indices, _ = identify_feature_types(x_train)
@@ -512,9 +510,15 @@ def Preprocess_Data(
     all_data = np.vstack([x_train_balanced, x_train_test])
     categories_per_column = determine_one_hot_categories(all_data, categorical_columns_indices)
 
-    x_train_encoded, binary_train_indices = one_hot_encode_with_categories(x_train_balanced, categorical_columns_indices, categories_per_column)
-    x_test_encoded, binary_test_indices = one_hot_encode_with_categories(x_train_test, categorical_columns_indices, categories_per_column)
-
+    x_train_encoded, binary_train_indices = one_hot_encode_with_categories(
+        x_train_balanced, categorical_columns_indices, categories_per_column
+    )
+    x_train_test_encoded, binary_train_test_indices = one_hot_encode_with_categories(
+        x_train_test, categorical_columns_indices, categories_per_column
+    )
+    x_test_encoded, binary_test_indices = one_hot_encode_with_categories(
+        x_test, categorical_columns_indices, categories_per_column
+    )
     feature_indices, _ = identify_feature_types(x_train_encoded)
     binary_columns_indices = feature_indices["binary_indices"]
     continuous_columns_indices = feature_indices["continuous_indices"]
@@ -522,30 +526,32 @@ def Preprocess_Data(
     
     # Step 9: Mean imputation for missing values in both train and test sets
     x_train_imputed = mean_imputation(x_train_encoded, binary_train_indices)
+    x_test_imputed = mean_imputation(x_train_test_encoded, binary_train_test_indices)
     x_test_imputed = mean_imputation(x_test_encoded, binary_test_indices)
     
     # Step 10: Variance thresholding to remove low-variance features
     valid_columns, x_train_variance_filtered = variance_thresholding(x_train_imputed, variance_threshold)
+    x_train_test_variance_filtered = x_test_imputed[:, valid_columns]
     x_test_variance_filtered = x_test_imputed[:, valid_columns]
     
     # Step 11: Correlation analysis to retain relevant features
     correlation_valid_columns, x_train_correlation_filtered = correlation_analysis(
         x_train_variance_filtered, y_train_balanced, low_corr_threshold, high_corr_threshold
     )
-    x_test_correlation_filtered = x_test_variance_filtered[:, correlation_valid_columns]
+    x_test_correlation_filtered = x_train_test_variance_filtered[:, correlation_valid_columns]
     
     # Step 12: Statistical test analysis for feature selection
     statistical_valid_columns, x_train_statistical_filtered = statistical_test_analysis(
         x_train_variance_filtered, y_train_balanced, continuous_columns_indices, p_value_threshold
     )
-    x_test_statistical_filtered = x_test_variance_filtered[:, statistical_valid_columns]
+    x_test_statistical_filtered = x_train_test_variance_filtered[:, statistical_valid_columns]
     
     # Step 13: Combine correlation and statistical test results
     combined_valid_columns = sorted(set(correlation_valid_columns) | set(statistical_valid_columns))
     x_train_final = x_train_variance_filtered[:, combined_valid_columns]
-    x_test_final = x_test_variance_filtered[:, combined_valid_columns]
+    x_test_final = x_train_test_variance_filtered[:, combined_valid_columns]
 
     # Keep the same features in x_test than the ones selected in x_train for consistency
-    x_test = x_test[:, combined_valid_columns]
+    x_test_final = x_test_variance_filtered[:, combined_valid_columns]
     
-    return x_train_final, x_test_final, y_train_balanced, y_test, x_test
+    return x_train_final, x_test_final, y_train_balanced, y_test, x_test_final

@@ -9,8 +9,8 @@ This project uses machine learning algorithms to predict cardiovascular disease 
 - [Usage](#usage)
 - [Data Description](#data-description)
 - [Data Preprocessing and Feature Selection](#data-preprocessing-and-feature-selection)
-- [Model Implementation and Training](#model-implementation-and-training)
-- [Prediction and test](#results-and-comparative-analysis)
+- [Models Implementation and Training](#models-implementation-and-training)
+- [Prediction and Test](#prediction-and-test)
 - [Conclusion](#conclusion)
 - [References](#references)
 

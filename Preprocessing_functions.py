@@ -1,45 +1,6 @@
 import numpy as np
 from helpers import *
 
-removal_log = []
-removed_missing_values = []
-removed_variance = []
-removed_correlation = []
-
-def log_and_print_removals(headers, removed_indices, step_name, reason):
-    """
-    Logs and prints the features removed at each step.
-
-    Args:
-        headers (list): The list of feature names.
-        removed_indices (list): Indices of features that were removed at the current step.
-        step_name (str): The name of the step where the features were removed.
-        reason (str): The reason why the features were removed.
-    """
-    removed_features = [headers[i] for i in removed_indices]
-    for feature in removed_features:
-        removal_log.append(f"{feature} removed at {step_name}: {reason}")
-
-    print(f"\nStep {step_name} - Reason: {reason}:")
-    print(f"Removed {len(removed_features)} features: {removed_features}")
-
-    # Function to print kept/removed features after each step
-def print_feature_info(headers, kept_indices, step_name):
-    """
-    Prints the number of features that were kept and removed after each step, 
-    along with the respective feature names.
-
-    Args:
-        headers (list): The list of feature names.
-        kept_indices (list): Indices of features that were kept after the step.
-        step_name (str): The name of the step for which this information is printed.
-    """
-    kept_features = [headers[i] for i in kept_indices]
-    removed_features = [headers[i] for i in range(len(headers)) if i not in kept_indices]
-    
-    print(f"\nStep {step_name}:")
-    print(f"Kept {len(kept_features)} features: {kept_features}")
-    print(f"Removed {len(removed_features)} features: {removed_features}")
 
 def extract_headers(csv_file_path):
     """
@@ -57,9 +18,30 @@ def extract_headers(csv_file_path):
     return headers[1:]  # Exclude the first column header as it is 'Id'
 
 
-def identify_feature_types(data, headers, categorical_threshold=10):
+def replace_dont_know_refused_all(data):
     """
-    Identifies the types of features in a dataset, classifying them as binary, continuous, or categorical.
+    Replaces values of 7 and 9 with NaN across all features in the dataset.
+
+    Args:
+        data (np.array): The dataset with features as columns.
+
+    Returns:
+        np.array: The dataset with 7 and 9 replaced by NaN in all columns.
+    """
+    # Replace 7 and 9 with NaN in the entire dataset
+    data_cleaned = np.where(
+    (data == 7) | (data == 77) | (data == 777) | (data == 7777) | (data == 77777) | (data == 777777) |
+    (data == 9) | (data == 99) | (data == 999) | (data == 9999) | (data == 99999) | (data == 999999),
+    np.nan,
+    data
+)
+    
+    return data_cleaned
+
+
+def identify_feature_types(data, categorical_threshold=15):
+    """
+    Identifies the types of features in a dataset and returns indices for binary, continuous, or categorical features.
 
     Args:
         data (np.array): The dataset as a numpy array with features as columns.
@@ -67,13 +49,13 @@ def identify_feature_types(data, headers, categorical_threshold=10):
         categorical_threshold (int): The maximum unique value count to classify a feature as categorical.
 
     Returns:
-        dict: A dictionary with lists of binary, continuous, and categorical feature names.
+        dict: A dictionary with lists of indices for binary, continuous, and categorical features.
         dict: A dictionary with counts of each feature type.
     """
-    # Initialize counters and lists for each feature type
-    binary_features = []
-    continuous_features = []
-    categorical_features = []
+    # Initialize lists for indices of each feature type
+    binary_indices = []
+    continuous_indices = []
+    categorical_indices = []
 
     # Analyze each feature column-wise
     for col_idx in range(data.shape[1]):
@@ -87,30 +69,30 @@ def identify_feature_types(data, headers, categorical_threshold=10):
         unique_count = len(unique_values)
 
         # Classify features based on unique values
-        if unique_count == 2 and set(unique_values) == {0, 1}:
-            binary_features.append(headers[col_idx])
+        if unique_count == 2:
+            binary_indices.append(col_idx)
         elif unique_count > categorical_threshold:
-            continuous_features.append(headers[col_idx])
+            continuous_indices.append(col_idx)
         else:
-            categorical_features.append(headers[col_idx])
+            categorical_indices.append(col_idx)
 
     # Prepare the output dictionaries
-    feature_lists = {
-        "binary_features": binary_features,
-        "continuous_features": continuous_features,
-        "categorical_features": categorical_features,
+    feature_indices = {
+        "binary_indices": binary_indices,
+        "continuous_indices": continuous_indices,
+        "categorical_indices": categorical_indices,
     }
 
     feature_counts = {
-        "binary_count": len(binary_features),
-        "continuous_count": len(continuous_features),
-        "categorical_count": len(categorical_features),
+        "binary_count": len(binary_indices),
+        "continuous_count": len(continuous_indices),
+        "categorical_count": len(categorical_indices),
     }
 
-    return feature_lists, feature_counts
+    return feature_indices, feature_counts
 
 
-def remove_missing_values(headers, data, threshold=0.25):
+def remove_missing_values(data, threshold=0.25):
     """
     Removes features (columns) from the dataset that have more than the specified
     percentage of missing values.
@@ -128,192 +110,181 @@ def remove_missing_values(headers, data, threshold=0.25):
     # Find the percentage of missing values for each column
     missing_values = np.isnan(data).mean(axis=0)
     valid_columns = np.where(missing_values <= threshold)[0]
-    removed_columns = np.where(missing_values > threshold)[0]
-
-    # Store the removed features
-    removed_features_names = [headers[i] for i in removed_columns]
-    removed_missing_values.extend(removed_features_names)
-    
-    # Log removed features
-    log_and_print_removals(headers, removed_columns, "1: Remove Missing Values", "Too many missing values")
     
     # Filter out the columns with too many missing values
     filtered_data = data[:, valid_columns]
     return valid_columns, filtered_data
 
-def one_hot_encode(data, headers, categorical_columns):
+
+def replace_binary_values(data, binary_columns_indices):
     """
-    Transforms categorical features into binary (one-hot encoded) features.
+    Replaces all values of 1 with 0 and values of 2 with 1 in the specified binary feature columns.
 
     Args:
-        data (np.array): The dataset as a numpy array.
-        headers (list): List of feature names corresponding to data columns.
-        categorical_columns (list): List of indices of categorical features in the dataset.
+        data (np.array): The dataset containing binary features.
+        binary_columns_indices (list): List of indices representing binary columns to transform.
 
     Returns:
-        np.array: Updated dataset with one-hot encoded features.
-        list: Updated headers with new binary feature names.
+        np.array: The dataset with transformed binary values.
+    """
+    for col in binary_columns_indices:
+        # Apply the replacement only to columns specified as binary
+        data[:, col] = np.where(data[:, col] == 1, 0, 
+                                np.where(data[:, col] == 2, 1, data[:, col]))
+
+    return data
+
+
+def split_and_balance_data(x_train, y_train, train_size):
+    """
+    Balances x_train and y_train to have an equal number of -1 and 1 labels.
+    
+    Args:
+        x_train: numpy array of shape (N, D), where N is the number of samples and D is the number of features.
+        y_train: numpy array of shape (N,), where N is the number of samples and each entry is either 1 or -1.
+        train_size (float) : Percentage of features split in the train set
+        
+    Returns:
+        x_train_balanced: numpy array of balanced samples.
+        y_train_balanced: numpy array of balanced labels.
+    """
+    # Find indices for each class
+    indices_class_1 = np.where(y_train == 1)[0]
+    indices_class_neg_1 = np.where(y_train == -1)[0]
+    
+    # Determine the smaller class size
+    min_class_size = min(len(indices_class_1), len(indices_class_neg_1))
+    
+    # Randomly select indices to balance the classes
+    balanced_indices_class_1 = np.random.choice(indices_class_1, min_class_size, replace=False)
+    balanced_indices_class_neg_1 = np.random.choice(indices_class_neg_1, min_class_size, replace=False)
+    
+    # Combine indices and shuffle
+    balanced_indices = np.concatenate([balanced_indices_class_1, balanced_indices_class_neg_1])
+    np.random.shuffle(balanced_indices)
+    
+    # Filter x_train and y_train based on balanced indices
+    x_train_balanced = x_train[balanced_indices]
+    y_train_balanced = y_train[balanced_indices]
+    
+    # Mélanger les indices de manière aléatoire
+    indices = np.arange(x_train_balanced.shape[0])
+    np.random.shuffle(indices)
+
+    # Calculer le point de séparation pour un ratio basé sur train_size
+    split_index = int(train_size * x_train_balanced.shape[0])
+
+    # Séparer les indices pour l'entraînement et la validation
+    train_indices = indices[:split_index]
+    val_indices = indices[split_index:]
+
+    # Créer les ensembles d'entraînement et de validation
+    x_train, y_train = x_train_balanced[train_indices], y_train_balanced[train_indices]
+    x_val, y_val = x_train_balanced[val_indices], y_train_balanced[val_indices]
+    
+    return x_train, x_val, y_train, y_val
+
+
+def standardize_continuous_features(data, continuous_indices):
+    """
+    Standardizes only continuous features in the dataset.
+
+    Args:
+        data (np.array): The dataset with features as columns.
+        continuous_indices (list): List of indices representing continuous features.
+
+    Returns:
+        np.array: The dataset with continuous features standardized.
+    """
+    # Copy data to avoid modifying the original dataset
+    data_standardized = data.copy()
+
+    for col_idx in continuous_indices:
+        column_data = data[:, col_idx]
+        
+        # Calculate mean and std, ignoring NaN values
+        mean = np.nanmean(column_data)
+        std = np.nanstd(column_data)
+        
+        # Standardize only if std is non-zero to avoid division by zero
+        if std > 0:
+            data_standardized[:, col_idx] = (column_data - mean) / std
+
+    return data_standardized
+
+
+def one_hot_encode(data, categorical_columns):
+    """
+    Applies one-hot encoding to specified categorical columns by transforming each unique category 
+    into a binary column.
+    
+    Args:
+        data (np.array): Dataset to encode.
+        categorical_columns (list): Indices of categorical columns.
+
+    Returns:
+        np.array: Dataset with one-hot encoded features.
+        list: List of binary (one-hot encoded) column indices.
     """
     updated_data = []
-    updated_headers = []
+    binary_columns_indices = []
+    current_index = 0
 
     for col_idx in range(data.shape[1]):
         if col_idx in categorical_columns:
-            # Get unique categories for this feature
+            # Determine unique categories in the column (excluding NaN values)
             unique_categories = np.unique(data[~np.isnan(data[:, col_idx]), col_idx])
             
-            # Create binary columns for each category
+            # Create a binary column for each unique category
             for category in unique_categories:
                 binary_column = (data[:, col_idx] == category).astype(int)
                 updated_data.append(binary_column)
                 
-                # Add new binary feature name to headers
-                updated_headers.append(f"{headers[col_idx]}_{category}_encoded")
+                # Track the binary column index
+                binary_columns_indices.append(current_index)
+                current_index += 1
         else:
-            # For non-categorical columns, add them directly
             updated_data.append(data[:, col_idx])
-            updated_headers.append(headers[col_idx])
+            current_index += 1
 
     # Stack the updated data columns horizontally
     updated_data = np.column_stack(updated_data)
-    return updated_data, updated_headers
+    return updated_data, binary_columns_indices
 
 
-def verify_one_hot_encoding(data, binary_columns_indices):
-    """
-    Verifies that all binary columns contain only 0s and 1s, and that all columns
-    in the dataset are either binary or continuous.
-
-    Args:
-        data (np.array): The dataset after one-hot encoding.
-        binary_columns_indices (list): List of indices of columns that should be binary.
-
-    Returns:
-        bool: True if all checks pass, False otherwise.
-    """
-    # Check binary columns
-    binary_check_passed = True
-    for col in binary_columns_indices:
-        unique_values = np.unique(data[:, col])
-        if not np.array_equal(unique_values, [0, 1]) and not np.array_equal(unique_values, [1, 0]):
-            print(f"Check failed: Column {col} has values other than 0 and 1.")
-            binary_check_passed = False
-
-    # Check non-binary columns are continuous
-    continuous_check_passed = True
-    for col in range(data.shape[1]):
-        if col not in binary_columns_indices:
-            unique_values = np.unique(data[:, col])
-            if len(unique_values) < 10:  # Continuous data should have a broad range of unique values
-                print(f"Check failed: Column {col} appears to have low unique values, suggesting it may not be continuous.")
-                continuous_check_passed = False
-
-    # Summary
-    if binary_check_passed and continuous_check_passed:
-        print("All checks passed: The dataset has only binary or continuous features.")
-        return True
-    else:
-        print("Some checks failed. Please review the warnings above.")
-        return False
-    
-
-def split_and_balance_data(x, y, test_size=0.2, balance_method="oversample"):
-    """
-    Splits the data into training and test sets, then balances the training set if specified.
-
-    Args:
-        x (np.array): Features data.
-        y (np.array): Target labels.
-        test_size (float): Proportion of the dataset to include in the test split.
-        balance_method (str): Method to balance the training set ("undersample" or "oversample").
-
-    Returns:
-        tuple: Balanced x_train, y_train, along with imbalanced x_test, y_test.
-    """
-    # Stratified Split
-    class_0_indices = np.where(y == -1)[0]
-    class_1_indices = np.where(y == 1)[0]
-
-    # Check if both classes are present
-    if len(class_0_indices) == 0 or len(class_1_indices) == 0:
-        raise ValueError("y does not contain both classes. Ensure y has both classes for balancing.")
-
-    np.random.shuffle(class_0_indices)
-    np.random.shuffle(class_1_indices)
-
-    n_test_class_0 = int(len(class_0_indices) * test_size)
-    n_test_class_1 = int(len(class_1_indices) * test_size)
-
-    test_indices = np.concatenate([class_0_indices[:n_test_class_0], class_1_indices[:n_test_class_1]])
-    train_indices = np.concatenate([class_0_indices[n_test_class_0:], class_1_indices[n_test_class_1:]])
-
-    x_train, x_test = x[train_indices], x[test_indices]
-    y_train, y_test = y[train_indices], y[test_indices]
-
-    # Balance the Training Set
-    if balance_method == "undersample":
-        majority_class = -1 if len(np.where(y_train == -1)[0]) > len(np.where(y_train == 1)[0]) else 1
-        minority_class_indices = np.where(y_train != majority_class)[0]
-        majority_class_indices = np.where(y_train == majority_class)[0]
-        
-        # Only proceed if both classes are present in y_train
-        if len(minority_class_indices) == 0 or len(majority_class_indices) == 0:
-            raise ValueError("The training data after split does not contain both classes.")
-
-        np.random.shuffle(majority_class_indices)
-        majority_class_indices = majority_class_indices[:len(minority_class_indices)]
-        balanced_indices = np.concatenate([minority_class_indices, majority_class_indices])
-        np.random.shuffle(balanced_indices)
-        x_train, y_train = x_train[balanced_indices], y_train[balanced_indices]
-        
-    elif balance_method == "oversample":
-        majority_class = -1 if len(np.where(y_train == -1)[0]) > len(np.where(y_train == 1)[0]) else 1
-        minority_class_indices = np.where(y_train != majority_class)[0]
-        majority_class_indices = np.where(y_train == majority_class)[0]
-        
-        # Only proceed if both classes are present in y_train
-        if len(minority_class_indices) == 0 or len(majority_class_indices) == 0:
-            raise ValueError("The training data after split does not contain both classes.")
-        
-        oversampled_indices = np.random.choice(minority_class_indices, size=len(majority_class_indices), replace=True)
-        balanced_indices = np.concatenate([majority_class_indices, oversampled_indices])
-        np.random.shuffle(balanced_indices)
-        x_train, y_train = x_train[balanced_indices], y_train[balanced_indices]
-
-    return x_train, x_test, y_train, y_test
-    
-
-def mean_imputation(data, binary_columns):
+def mean_imputation(data, binary_columns_indices):
     """
     Imputes missing values in the dataset by replacing them with the mean of each column.
     For binary columns, the mean is rounded to 0 or 1.
 
     Args:
         data (np.array): The dataset with missing values (numpy array with NaN for missing values).
-        binary_columns (list): List of indices representing binary columns.
+        binary_columns_indices (list): List of indices representing binary columns.
 
     Returns:
         np.array: The dataset with missing values replaced by column means or rounded means for binary features.
     """
+    # Compute the mean for each column, ignoring NaNs
     col_means = np.nanmean(data, axis=0)
-    inds = np.where(np.isnan(data))
     
-    # For binary columns, round the mean to 0 or 1
-    for col in binary_columns:
+    # Adjust means for binary columns to ensure they are either 0 or 1
+    for col in binary_columns_indices:
         col_means[col] = round(col_means[col])
 
-    # Replace NaNs with the appropriate mean (rounded for binary columns)
+    # Find indices where NaN values are present in the data
+    inds = np.where(np.isnan(data))
+    
+    # Replace NaNs with the computed means
     data[inds] = np.take(col_means, inds[1])
     
     return data
 
 
-def variance_thresholding(headers, data, threshold=0.01):
+def variance_thresholding(data, threshold=0.01):
     """
     Removes features that have variance below a specified threshold.
 
     Args:
-        headers (list): The list of feature names.
         data (np.array): The dataset (numpy array) with features as columns.
         threshold (float): The minimum variance threshold (default is 1%).
 
@@ -324,22 +295,20 @@ def variance_thresholding(headers, data, threshold=0.01):
     """
     # Compute variance for each column
     variances = np.nanvar(data, axis=0)
+    
+    # Identify columns that meet the variance threshold
     valid_columns = np.where(variances >= threshold)[0]
     removed_columns = np.where(variances < threshold)[0]
 
-    # Store the removed features
-    removed_features_names = [headers[i] for i in removed_columns]
-    removed_variance.extend(removed_features_names)
-    
-    # Log removed features
-    log_and_print_removals(headers, removed_columns, "2: Variance Thresholding", "Low variance")
-    
-    # Keep only columns with variance above the threshold
+    # Filter out the columns with variance below the threshold
     filtered_data = data[:, valid_columns]
+
+    print(f"Variance thresholding: {len(removed_columns)} features removed with variance below {threshold}")
+    
     return valid_columns, filtered_data
 
 
-def correlation_analysis(headers, x_data, y_data, low_threshold=0.05, high_threshold=0.9):
+def correlation_analysis(x_data, y_data, low_threshold=0.05, high_threshold=0.9):
     """
     Removes features that have low correlation with the outcome variable (y_data),
     or that are highly correlated with other features.
@@ -357,7 +326,6 @@ def correlation_analysis(headers, x_data, y_data, low_threshold=0.05, high_thres
             - filtered_data (np.array): The filtered dataset with only the valid columns.
     """
     valid_columns = []
-    removed_columns = []
 
     # Ensure feature and outcome have the same non-NaN indices
     for i in range(x_data.shape[1]):
@@ -377,32 +345,21 @@ def correlation_analysis(headers, x_data, y_data, low_threshold=0.05, high_thres
             # Check if the correlation is within the desired range
             if abs(correlation) >= low_threshold and abs(correlation) <= high_threshold:
                 valid_columns.append(i)
-            else:
-                removed_columns.append(i)
-        else:
-            removed_columns.append(i)
-
-    # Log removed features
-    log_and_print_removals(headers, removed_columns, "3: Correlation Analysis", "Low or high correlation")
-
-    # Store the removed features
-    removed_features_names = [headers[i] for i in removed_columns]
-    removed_correlation.extend(removed_features_names)
 
     # Filter valid columns
     filtered_data = x_data[:, valid_columns]
     return valid_columns, filtered_data
 
 
-def statistical_test_analysis(headers, x_data, y_data, p_value_threshold=0.05):
+def statistical_test_analysis(x_data, y_data, continuous_indices, p_value_threshold=0.05):
     """
     Retains features that have a statistically significant association with the outcome variable (y_data),
     using an F-test for continuous features and a Chi-Square test for categorical features.
 
     Args:
-        headers (list): The list of feature names.
         x_data (np.array): The feature dataset (numpy array) with features as columns.
         y_data (np.array): The outcome variable (labels) to test associations with.
+        continuous_indices (list): List of indices for continuous features in x_data.
         p_value_threshold (float): The significance level threshold for retaining features (default is 0.05).
 
     Returns:
@@ -422,9 +379,8 @@ def statistical_test_analysis(headers, x_data, y_data, p_value_threshold=0.05):
         feature_clean = feature[non_nan_mask]
         y_data_clean = y_data[non_nan_mask]
 
-        # Check if the feature is continuous or categorical
-        unique_vals = np.unique(feature_clean)
-        if len(unique_vals) > 10:  # Assume continuous if more than 10 unique values
+        # Determine if the feature is continuous based on index
+        if i in continuous_indices:
             # Perform F-test for continuous features
             classes = [feature_clean[y_data_clean == label] for label in np.unique(y_data_clean)]
             overall_var = np.var(feature_clean)
@@ -437,7 +393,10 @@ def statistical_test_analysis(headers, x_data, y_data, p_value_threshold=0.05):
         else:
             # Perform Chi-Square test for categorical features
             unique_y = np.unique(y_data_clean)
-            contingency_table = np.array([[(feature_clean == val).sum() & (y_data_clean == label).sum() for label in unique_y] for val in unique_vals])
+            unique_vals = np.unique(feature_clean)
+            contingency_table = np.array([
+                [(feature_clean == val).sum() & (y_data_clean == label).sum() for label in unique_y] for val in unique_vals
+            ])
             chi_square_statistic = np.sum((contingency_table - np.mean(contingency_table))**2 / np.mean(contingency_table))
             p_value = 1 - (1 / (1 + chi_square_statistic))  # Simplified approximation
 
@@ -447,86 +406,99 @@ def statistical_test_analysis(headers, x_data, y_data, p_value_threshold=0.05):
         else:
             removed_columns.append(i)
 
-    # Log removed features
-    log_and_print_removals(headers, removed_columns, "4: Statistical Test Analysis", "Not statistically significant")
-
     # Filter valid columns
     filtered_data = x_data[:, valid_columns]
     return valid_columns, filtered_data
 
 
-
-def Preprocess_data(file_path, x_train, y_train, test_size=0.2, balance_method="oversample", low_corr_threshold=0.05, high_corr_threshold=0.9, variance_threshold=0.01, p_value_threshold=0.05, missing_val_threshold=0.25):
+def Preprocess_Data(
+    file_path, x_train, y_train, x_test, train_size=0.8,
+    missing_val_threshold=0.25, variance_threshold=0.01,
+    low_corr_threshold=0.05, high_corr_threshold=0.9, p_value_threshold=0.05
+):
     """
-    Preprocesses the dataset by sequentially applying all preprocessing steps: missing values removal, 
-    one-hot encoding, data splitting, data balancing, mean imputation, variance thresholding, 
-    correlation analysis, and statistical test analysis.
-
+    Preprocesses the dataset by sequentially applying data cleaning, feature selection, 
+    standardization, and balancing steps.
+    
     Args:
         file_path (str): Path to the dataset folder.
-        x_train (np.array): Initial training feature data.
-        x_test (np.array): Initial test feature data.
-        y_train (np.array): Training labels.
-        test_size (float): Proportion of the dataset to include in the test split.
-        balance_method (str): Method to balance the training set ("undersample" or "oversample").
-        low_corr_threshold (float): Minimum Pearson correlation threshold for correlation analysis.
-        high_corr_threshold (float): Maximum Pearson correlation threshold for correlation analysis.
+        x_train (np.array): Training feature dataset.
+        y_train (np.array): Target variable for training.
+        x_test (np.array): Test feature dataset
+        train_size (float): Proportion of data for the train set.
+        missing_val_threshold (float): Threshold for removing columns with too many missing values.
         variance_threshold (float): Minimum variance threshold to retain features.
-        p_value_threshold (float): Significance level threshold for statistical analysis.
-        missing_val_threshold (float): Maximum allowed percentage of missing values.
-
+        low_corr_threshold (float): Minimum correlation threshold with target variable.
+        high_corr_threshold (float): Maximum correlation threshold for feature redundancy.
+        p_value_threshold (float): Threshold for feature selection based on statistical significance.
+    
     Returns:
-        tuple: Preprocessed x_train, x_test, and y_train datasets, as well as final headers.
+        np.array: Preprocessed and balanced training and test sets, including final `x_train`, 
+        `x_test`, `y_train_balanced`, and `y_test`.
     """
+    # Extract headers for reference
     x_train_headers = extract_headers(file_path + "x_train.csv")
+    
+    # Step 1: Replace "don't know" or "refused" values with NaN across all features
+    x_train = replace_dont_know_refused_all(x_train)
+    x_test = replace_dont_know_refused_all(x_test)
 
-    # Step 1: Remove features with too many missing values
-    valid_columns, x_train = remove_missing_values(x_train_headers, x_train, missing_val_threshold)
-    x_train_headers = [x_train_headers[i] for i in valid_columns]
+    # Step 2: Remove features with too many missing values
+    valid_columns, x_train = remove_missing_values(x_train, missing_val_threshold)
+    x_train_headers = [x_train_headers[i] for i in valid_columns]  # Update headers after column removal
+    x_test = x_test[:, valid_columns]  # Apply the same columns to x_test
+    
+    # Step 3: Identify feature types
+    feature_indices, _ = identify_feature_types(x_train)
+    binary_columns_indices = feature_indices["binary_indices"]
+    continuous_columns_indices = feature_indices["continuous_indices"]
+    categorical_columns_indices = feature_indices["categorical_indices"]
+    
+    # Step 4: Replace binary values from 1,2 to 0,1
+    x_train = replace_binary_values(x_train, binary_columns_indices)
+    x_test = replace_binary_values(x_test, binary_columns_indices)
+    
+    # Step 5: Standardize continuous features in both train and test sets
+    x_train = standardize_continuous_features(x_train, continuous_columns_indices)
+    x_test = standardize_continuous_features(x_test, continuous_columns_indices)
+    
+    # Step 6: One-hot encode categorical features in both train and test sets
+    x_train_encoded, binary_train_indices = one_hot_encode(x_train, categorical_columns_indices)
+    x_test_encoded, binary_test_indices = one_hot_encode(x_test, categorical_columns_indices)
 
-    # Step 2: Identify Feature Types
-    feature_lists, feature_counts = identify_feature_types(x_train, x_train_headers)
-    binary_features = feature_lists["binary_features"]
-    categorical_features = feature_lists["categorical_features"]
-
-    # Step 3: One-Hot Encoding for categorical features
-    categorical_columns_filtered = [i for i, header in enumerate(x_train_headers) if header in categorical_features]
-    x_train_encoded, x_train_encoded_headers = one_hot_encode(x_train, x_train_headers, categorical_columns_filtered)
-
-    # Step 4: Split and Balance the Data
-    x_train_balanced, x_train_test, y_train_balanced, y_test = split_and_balance_data(x_train_encoded, y_train, test_size, balance_method)
-
-    # Step 5: Verify One-Hot Encoding
-    binary_columns = [i for i, header in enumerate(x_train_encoded_headers) if "_encoded" in header or header in binary_features]
-    verify_one_hot_encoding(x_train_balanced, binary_columns)
-
-    # Step 6: Mean Imputation for Missing Values
-    x_train_imputed = mean_imputation(x_train_balanced, binary_columns)
-    x_test_imputed = mean_imputation(x_train_test, binary_columns)
-
-    # Step 7: Variance Thresholding
-    valid_columns, x_train_variance_filtered = variance_thresholding(x_train_encoded_headers, x_train_imputed, variance_threshold)
-    x_train_variance_filtered_headers = [x_train_encoded_headers[i] for i in valid_columns]
+    feature_indices, _ = identify_feature_types(x_train_encoded)
+    binary_columns_indices = feature_indices["binary_indices"]
+    continuous_columns_indices = feature_indices["continuous_indices"]
+    categorical_columns_indices = feature_indices["categorical_indices"]
+    
+    # Step 7: Mean imputation for missing values in both train and test sets
+    x_train_imputed = mean_imputation(x_train_encoded, binary_train_indices)
+    x_test_imputed = mean_imputation(x_test_encoded, binary_test_indices)
+    
+    # Step 8: Variance thresholding to remove low-variance features
+    valid_columns, x_train_variance_filtered = variance_thresholding(x_train_imputed, variance_threshold)
     x_test_variance_filtered = x_test_imputed[:, valid_columns]
-
-    # Step 8: Correlation Analysis
+    
+    # Step 9: Correlation analysis to retain relevant features
     correlation_valid_columns, x_train_correlation_filtered = correlation_analysis(
-        x_train_variance_filtered_headers, x_train_variance_filtered, y_train_balanced, low_corr_threshold, high_corr_threshold
+        x_train_variance_filtered, y_train, low_corr_threshold, high_corr_threshold
     )
-    x_train_correlation_filtered_headers = [x_train_variance_filtered_headers[i] for i in correlation_valid_columns]
-    x_test_correlation_filtered = x_test_variance_filtered[:, correlation_valid_columns]
-
-    # Step 9: Statistical Test Analysis
+    
+    # Step 10: Statistical test analysis for feature selection
     statistical_valid_columns, x_train_statistical_filtered = statistical_test_analysis(
-        x_train_variance_filtered_headers, x_train_variance_filtered, y_train_balanced, p_value_threshold
+        x_train_variance_filtered, y_train, continuous_columns_indices, p_value_threshold
     )
-    x_train_statistical_filtered_headers = [x_train_variance_filtered_headers[i] for i in statistical_valid_columns]
-    x_test_statistical_filtered = x_test_variance_filtered[:, statistical_valid_columns]
-
-    # Combine results from both correlation and statistical tests (union of both selections)
+    
+    # Step 11: Combine correlation and statistical test results
     combined_valid_columns = sorted(set(correlation_valid_columns) | set(statistical_valid_columns))
     x_train_final = x_train_variance_filtered[:, combined_valid_columns]
-    x_train_final_headers = [x_train_variance_filtered_headers[i] for i in combined_valid_columns]
+
+    # Keep the same features in x_test than the ones selected in x_train for consistency
     x_test_final = x_test_variance_filtered[:, combined_valid_columns]
+
+    # Step 12: Split and balance the data
+    x_train_balanced, x_train_test, y_train_balanced, y_test = split_and_balance_data(
+        x_train_final, y_train, train_size=train_size
+    )
     
-    return x_train_final_headers, x_train_final, x_test_final, y_train_balanced, y_test
+    return x_train_balanced, x_train_test, y_train_balanced, y_test, x_test_final

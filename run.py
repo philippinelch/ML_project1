@@ -1,1 +1,0 @@
-#The following script must produces exactly the same .csv predictions used in the competition system

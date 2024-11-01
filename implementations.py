@@ -85,7 +85,19 @@ def mean_squares_error_gd(y, tx, initial_w, max_iters, gamma):
     return w, loss
 
 def mean_squared_error_sgd(y, tx, initial_w, max_iters, gamma):
-    
+    """
+    Performs stochastic gradient descent (SGD) to minimize the mean squared error (MSE) loss.
+
+    Args:
+        y (np.array): Target variable of shape (N,).
+        tx (np.array): Feature matrix of shape (N, D), where N is the number of samples, and D is the number of features.
+        initial_w (np.array): Initial weights of shape (D,).
+        max_iters (int): Maximum number of epochs (iterations over the entire dataset).
+        gamma (float): Learning rate (step size) for SGD.
+
+    Returns:
+        tuple: Updated weights (np.array) of shape (D,) after SGD optimization and final MSE loss (float).
+    """
     seed = 42 
     np.random.seed(seed)
    
@@ -140,7 +152,6 @@ def least_squares(y, tx):
     # returns mse, and optimal weights
     w = np.linalg.solve(tx.T @tx, tx.T @y)    
     loss= compute_loss(y, tx, w)
-    
     return w, loss
 
 
@@ -160,7 +171,6 @@ def ridge_regression(y, tx, lambda_):
     I = np.eye(D)
     w = np.linalg.solve(tx.T@tx + lambda_prime*I, tx.T@y)
     loss = compute_loss(y, tx, w)
-    
     return w, loss
 
 
@@ -175,7 +185,6 @@ def sigmoid(t):
     """
     sigma = (1+np.exp(-t))**(-1)
     return sigma
-
 
 
 def logistic_regression(y, tx, initial_w, max_iters, gamma):
@@ -203,23 +212,33 @@ def logistic_regression(y, tx, initial_w, max_iters, gamma):
         loss = -1/len(y) * np.sum(y * np.log(sigmoid(tx@w)) + (1-y)* np.log(1 - sigmoid(tx@w)))
         gradient = 1/len(y) * tx.T @ (sigmoid(tx@w)- y)
         w = w - gamma * gradient
-        
-        # log info
-        if iter % 100 == 0:
-            print("Current iteration={i}, loss={l}".format(i=iter, l=loss))
+
         # converge criterion
         losses.append(loss)
-        weight.append(weight)
+        weight.append(w)
         if len(losses) > 1 and np.abs(losses[-1] - losses[-2]) < threshold:
             break
         
     loss = np.min(losses)
     w = weight[losses.index(loss)]
-    
+    w= w.ravel()
     return w, loss
 
 def reg_logistic_regression(y, tx, lambda_, initial_w, max_iters, gamma):
-    
+    """
+    Performs regularized logistic regression using gradient descent.
+
+    Args:
+        y (np.array): Target variable of shape (N,), with binary labels (0 or 1).
+        tx (np.array): Feature matrix of shape (N, D), where N is the number of samples, and D is the number of features.
+        lambda_ (float): Regularization parameter to control overfitting.
+        initial_w (np.array): Initial weights of shape (D,).
+        max_iters (int): Maximum number of iterations for the gradient descent.
+        gamma (float): Learning rate (step size) for gradient descent.
+
+    Returns:
+        tuple: Optimal weights (np.array) of shape (D,) after training, and minimum loss (float).
+    """
     threshold = 1e-8
     losses = []
     weights = []
@@ -234,10 +253,6 @@ def reg_logistic_regression(y, tx, lambda_, initial_w, max_iters, gamma):
         
         
         w = w - gamma * grad
-        # log info
-        if iter % 100 == 0:
-            print("Current iteration={i}, loss={l}".format(i=iter, l=loss))
-        # converge criterion
         losses.append(loss)
         weights.append(w)
         if len(losses) > 1 and np.abs(losses[-1] - losses[-2]) < threshold:
@@ -245,12 +260,22 @@ def reg_logistic_regression(y, tx, lambda_, initial_w, max_iters, gamma):
     
     loss = np.min(losses)
     iter_ = losses.index(loss)
-    w = weights[iter_]
-    
-    print(iter_)
+    w = weights[iter_].ravel()
     return w, loss
 
 def f1_score (y_true, y_pred) : 
+    """
+    Calculates the F1 score, a measure of a model's accuracy in binary classification, 
+    based on precision and recall.
+
+    Args:
+        y_true (np.array): True binary labels of shape (N,), where each entry is either 0 or 1.
+        y_pred (np.array): Predicted probabilities or labels of shape (N,). Values are 
+                           thresholded at 0.5 to classify as either 0 or 1.
+
+    Returns:
+        float: The F1 score, ranging from 0 to 1, where 1 indicates perfect precision and recall.
+    """
     y_pred_bin = (y_pred >= 0.5).astype(int)
     
     # Calcul des True Positives, False Positives et False Negatives

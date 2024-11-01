@@ -26,11 +26,11 @@ git clone https://github.com/philippinelch/ML_project1
 
 The following files are available in the repository 
 - implementations.py : containing the different machine learning algorithm functions and other functions used in the training (for example function to compute the F1 score);
-- Preprocessing_functions.py : containing all the functions used for the preprocessing of the data; 
+- Preprocessing_Functions.py : containing all the functions used for the preprocessing of the data; 
 - run.ipynb : a notebook containing the pipeline the project : preprocessing, hyperparameter tuning, model training, model testing and predictions.
 - helpers.py : containing functions to load the data and to create the final .csv for submissions
 
-Run the script run.ipynb to preprocess the data, implement/train the models and get the final best predictions. Pay attention to adapt the data_path depending on where the data are store.
+Run the script run.ipynb to preprocess the data, implement/train the models and get the final best predictions. *Pay attention to adapt the data_path depending on where the data are store.*
 
 ## Data Description 
 
@@ -39,7 +39,7 @@ The data used for this project are from the Behavioral Risk Factor Surveillance 
 x_train and x_test are both composed of 321 columns containing informations (numerical and categorical data) on lifestyle and clinical factors of patients (each row corresponding to a person associated to an ID).  
 y_train is composed of two column : ID (associated to patient) and MICHD (1 = patients have a coronary heart disease (MICHD); -1 = the person does not have a MICHD).  
 
-Respondents (participants) were classified as having coronary heart disease (MICHD=1) if they reported having been tol by a provider they had MICHD or if they reported having been told they had a heart attacks or angina.
+Respondents (participants) were classified as having coronary heart disease (MICHD=1) if they reported having been told by a provider they had MICHD or if they reported having been told they had a heart attacks or angina.
 
 ## Data Preprocessing and Feature Selection 
 
@@ -48,9 +48,10 @@ The following steps detailed the data preprocessing and feature selection realiz
 - Manual features selection (based on documentation and common knowledge)
 - Remove column with to many NaN value
 - Standardization of the data
+- Hot-encoding for the categorical variable
 - Replace the NaN by the mean value 
 - Correlation to the output analysis 
-- Hot encoding for the categorical variable 
+- Statistical test relevance (T-test / Chi-Square test)
 - Split the data between train set and validation set
 
 ## Models Implementation and training
